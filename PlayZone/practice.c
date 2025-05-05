@@ -36,11 +36,6 @@ short redrawScreen = 0;
 
 int switches = 0;
 
-//game
-void drawShip();
-void updateAsteroid();
-int collision();
-
 //generate ramdoms numbers
 int random() {
   static unsigned int seed = 0;
@@ -50,7 +45,7 @@ int random() {
 
 //SHIP
 void drawShip() {
-  fillRectangle(shipCol, screenHeight - SHIP_H - 2, SHIP_W, SHIP_H, COLOR_BLUE);
+  fillRectangle(shipCol, screenHeight - SHIP_H - 2, SHIP_W, SHIP_H, COLOR_WHITE);
 }
 void undrawShip() {
   fillRectangle(shipCol, screenHeight - SHIP_H - 2, SHIP_W, SHIP_H, COLOR_BLACK);
@@ -90,7 +85,7 @@ void switch_interrupt_handler() {
     if (shipCol > 5) shipCol -= 5; 
   }
   if (switches & SW2) {
-    if (shipCol < screenWidth - SHIP_W -5) shipCol += 5;
+    if (shipCol < (screenWidth - (SHIP_W - 5))) shipCol += 5;
   }
   /*
   if (switches & SWITCHES) {
@@ -108,43 +103,42 @@ void switch_interrupt_handler() {
 }
 //game
 void init_asteroids() {
-  int i = 0;
-  while (i < ASTEROID_COUNT) {
+  for (int i = 0; i < ASTEROID_COUNT; i++) {
     asteroids[i].col = random();
     asteroids[i].row = 0;
     asteroids[i].active = 1;
-    i++;
   }
 }
 
 
 void move_asteroids() {
-  int i = 0;
-  while (i > ASTEROID_COUNT) {
-    fillRectangle(asteroids[i].col, asteroids[i].row, 5, 5, COLOR_BLACK);
-    asteroids[i].row += ASTEROID_SPEED;
-    if (asteroids[i].row > screenHeight) {
-      asteroids[i].col = random();
-      asteroids[i].row = 0;
-      score++;
+  for (int i = 0; i < ASTEROID_COUNT; i++) {
+    if (asteroids[i].active) {
+      fillRectangle(asteroids[i].col, asteroids[i].row, 5, 5, COLOR_BLACK);
+      asteroids[i].row += ASTEROID_SPEED;
+      if (asteroids[i].row > screenHeight) {
+	asteroids[i].col = random();
+	asteroids[i].row = 0;
+	score++;
+      }
+      fillRectangle(asteroids[i].col, asteroids[i].row, 5, 5, COLOR_RED);
     }
-    fillRectangle(asteroids[i].col, asteroids[i].row, 5, 5, COLOR_RED);
-    i++;
   }
 }
 
 int collision() {
   int i = 0;
-  while (i > ASTEROID_COUNT) {
+  while (i < ASTEROID_COUNT) {
     if (asteroids[i].active) {
       int asteroidBottom = asteroids[i].row + 5;
       int shipTop = screenHeight - SHIP_H - 2;
       if (asteroidBottom >= shipTop
-	  && asteroids[i].col + 5 >= shipCol
-	  && asteroids[i].col <= shipCol + SHIP_W) {
-	return 1;
+   	  && asteroids[i].col + 5 >= shipCol
+    	  && asteroids[i].col <= shipCol + SHIP_W) {
+    	return 1;
       }
     }
+    i++;
   }
   return 0;
 }
@@ -169,8 +163,8 @@ void intToStr(int num, char *str) {
 }
 
 void show_score() {
-  char scoreStr[16] = "score";
-  intToStr(score, scoreStr + 6);
+  char scoreStr[16] = "score: ";
+  intToStr(score, scoreStr + 7);
   drawString5x7(0, 0, scoreStr, COLOR_WHITE, COLOR_BLACK);
 }
 
@@ -246,40 +240,48 @@ void close_Window() {
     row++;
   }
 }
-
-volatile int count = 0;
+volatile int counters = 0;
 void wdt_c_handler() {
-  count++;
-  if (count >= 450) {
-    count = 0;
+  //P1OUT ^= LED;
+  counters++;
+  if (counters >= 250) {
+    counters = 0;
+    redrawScreen = 1;
     P1OUT ^= LED;
-  } 
-  undrawShip();
-  move_asteroids();
-  drawShip();
-  show_score();
-  switch_interrupt_handler();
-  
-  if (collision()) {
-    clearScreen(COLOR_BLACK);
-    drawString5x7(30, screenHeight / 2, "GAME OVER", COLOR_RED, COLOR_BLACK);
-    while(1);
   }
 }
 
 int main() {
   P1DIR |= LED;
   P1OUT |= LED;
+  
   configureClocks();
   lcd_init();
   switch_init();
   
   clearScreen(COLOR_BLACK);
   init_asteroids();
-  
+  drawShip();
   enableWDTInterrupts();
   or_sr(0x8);
-  
+
+  while (1) {
+    if (redrawScreen) {
+      redrawScreen = 0;
+      switch_interrupt_handler();
+      
+      undrawShip();
+      move_asteroids();
+      drawShip();
+      show_score();
+      
+      if (collision()) {
+	clearScreen(COLOR_BLACK);
+	drawString5x7(30, screenHeight / 2, "GAME OVER", COLOR_RED, COLOR_BLACK);
+	while(1);
+      }
+    }
+  }
 }
 
 void __interrupt_vec(PORT2_VECTOR) Port_2() {

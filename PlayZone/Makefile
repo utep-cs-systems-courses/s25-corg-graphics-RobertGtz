@@ -5,6 +5,8 @@ LDFLAGS		= -L../lib -L/opt/ti/msp430_gcc/include/
 CC  = msp430-elf-gcc
 AS  = msp430-elf-gcc -mmcu=${CPU} -c
 
+COMMON_OBJECTS = wdt_handler.o
+
 all:practice.elf
 
 practice.elf: ${COMMON_OBJECTS} practice.o wdt_handler.o
