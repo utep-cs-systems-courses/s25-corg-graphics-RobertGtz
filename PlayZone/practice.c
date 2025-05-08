@@ -32,7 +32,7 @@ char game_over = 0;
 
 //window
 char current_position = 0;
-short redrawScreen = 0;
+volatile short redrawScreen = 0;
 
 int switches = 0;
 
@@ -40,7 +40,7 @@ int switches = 0;
 int random() {
   static unsigned int seed = 0;
   seed = (seed * 1103515245 + 12345 + TAR) & 0x7FFF;
-  return 10 + (seed % (screenWidth - 20));
+  return (seed % (screenWidth - 10));
 }
 
 //SHIP
@@ -73,20 +73,32 @@ void switch_init() {
   switch_update_interrupt_sense();
 
 }
+volatile char switch_pressed = 0;
 
 //to know what buttom was press and then do something with it
 void switch_interrupt_handler() {
 
   char p2val = P2IN;
+  //switch_update_interrupt_sense();
+  switch_pressed = ~p2val & SWITCHES; //turn on only the button push
+  P2IFG &= ~SWITCHES;
   switch_update_interrupt_sense();
-  switches = ~p2val & SWITCHES; //turn on only the button push
-
+  redrawScreen = 1;
+  /*
   if (switches & SW1) {
-    if (shipCol > 5) shipCol -= 5; 
+    if (shipCol > 5) {
+      undrawShip();
+      shipCol -= 5;
+      drawShip();
+    }
   }
   if (switches & SW2) {
-    if (shipCol < (screenWidth - (SHIP_W - 5))) shipCol += 5;
-  }
+    if (shipCol < (screenWidth - (SHIP_W - 5))) {
+      undrawShip();
+      shipCol += 5;
+      drawShip();
+    }
+  }*/
   /*
   if (switches & SWITCHES) {
     redrawScreen = 1;
@@ -104,9 +116,10 @@ void switch_interrupt_handler() {
 //game
 void init_asteroids() {
   for (int i = 0; i < ASTEROID_COUNT; i++) {
-    asteroids[i].col = random();
-    asteroids[i].row = 0;
+    asteroids[i].col = random() % (screenWidth - 10);
+    asteroids[i].row = - (i * 20);
     asteroids[i].active = 1;
+    fillRectangle(asteroids[i].col, asteroids[i].row, 5, 5, COLOR_RED);
   }
 }
 
@@ -260,19 +273,40 @@ int main() {
   switch_init();
   
   clearScreen(COLOR_BLACK);
+
+  shipCol = 60;
+  score = 0;
+  game_over = 0;
+  
   init_asteroids();
   drawShip();
+  show_score();
+  
   enableWDTInterrupts();
   or_sr(0x8);
 
   while (1) {
     if (redrawScreen) {
       redrawScreen = 0;
-      switch_interrupt_handler();
-      
-      undrawShip();
+      if (switch_pressed) {
+	if (switch_pressed & SW1) {
+	  if (shipCol > 5) {
+	    undrawShip();
+	    shipCol -= 5;
+	    drawShip(); 
+	  }
+	}
+	
+	if (switch_pressed & SW2) {
+	  if (shipCol < (screenWidth - SHIP_W - 5)) {
+	    undrawShip();
+	    shipCol += 5;
+	    drawShip(); 
+	  }
+	}
+	switch_pressed = 0;
+      }	
       move_asteroids();
-      drawShip();
       show_score();
       
       if (collision()) {
@@ -286,7 +320,7 @@ int main() {
 
 void __interrupt_vec(PORT2_VECTOR) Port_2() {
   if (P2IFG & SWITCHES) {
-    P2IFG &= ~SWITCHES;
+    //P2IFG &= ~SWITCHES;
     switch_interrupt_handler();
   }
 }
