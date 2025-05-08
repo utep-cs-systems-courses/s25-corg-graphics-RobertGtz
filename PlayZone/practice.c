@@ -15,7 +15,7 @@
 #define SHIP_H 5
 
 #define ASTEROID_COUNT 3
-#define ASTEROID_SPEED 1
+#define ASTEROID_SPEED 2
 
 typedef struct {
   int col, row, active;
@@ -35,6 +35,24 @@ char current_position = 0;
 volatile short redrawScreen = 0;
 
 int switches = 0;
+
+unsigned int screenWs = screenWidth;
+unsigned int screenHs = screenHeight;
+
+extern void close_window(void);  
+
+void buzzer_init() {
+  timerAUpmode();
+  P2SEL2 &= ~(BIT6 | BIT7);
+  P2SEL &= ~BIT7;
+  P2SEL |= BIT6;
+  P2DIR |= BIT6;
+}
+void buzzer_set_period(short cycles) {
+  CCR0 = cycles;
+  CCR1 = cycles >> 1;
+}
+
 
 //generate ramdoms numbers
 int random() {
@@ -77,13 +95,20 @@ volatile char switch_pressed = 0;
 
 //to know what buttom was press and then do something with it
 void switch_interrupt_handler() {
+  static char lastState = 0;
+  char current = ~P2IN & SWITCHES;
+  char changed = current & ~lastState;
 
-  char p2val = P2IN;
-  //switch_update_interrupt_sense();
-  switch_pressed = ~p2val & SWITCHES; //turn on only the button push
+  switch_pressed = changed;
+  lastState = current;
+
   P2IFG &= ~SWITCHES;
   switch_update_interrupt_sense();
   redrawScreen = 1;
+  //char p2val = P2IN;
+  //switch_update_interrupt_sense();
+  //P2IFG &= ~SWITCHES;
+  //switch_update_interrupt_sense();
   /*
   if (switches & SW1) {
     if (shipCol > 5) {
@@ -133,6 +158,11 @@ void move_asteroids() {
 	asteroids[i].col = random();
 	asteroids[i].row = 0;
 	score++;
+	
+	//sound
+	buzzer_set_period(1000);
+	__delay_cycles(300000);
+	buzzer_set_period(0);
       }
       fillRectangle(asteroids[i].col, asteroids[i].row, 5, 5, COLOR_RED);
     }
@@ -204,7 +234,13 @@ void drawWithDelay(int col, int row, int *count) {
   }
 }
 
-void close_Window() {
+void delay(unsigned int ms) {
+  for (unsigned int i = 0; i < ms * 1000; i++) {
+    __delay_cycles(1);
+  }
+}
+
+void  close_Window1() {
 
   int left = 0;
   int right = screenWidth - 1;
@@ -253,24 +289,29 @@ void close_Window() {
     row++;
   }
 }
+char moveLeft = 0;
+char moveRight = 0;
 volatile int counters = 0;
 void wdt_c_handler() {
   //P1OUT ^= LED;
   counters++;
-  if (counters >= 250) {
+
+  if (counters >= 5) {
     counters = 0;
     redrawScreen = 1;
     P1OUT ^= LED;
+    switch_pressed = 0;
   }
 }
 
 int main() {
-  P1DIR |= LED;
-  P1OUT |= LED;
+P1DIR |= LED;
+P1OUT |= LED;
   
   configureClocks();
   lcd_init();
   switch_init();
+  buzzer_init();
   
   clearScreen(COLOR_BLACK);
 
@@ -286,37 +327,40 @@ int main() {
   or_sr(0x8);
 
   while (1) {
-    if (redrawScreen) {
-      redrawScreen = 0;
-      if (switch_pressed) {
-	if (switch_pressed & SW1) {
-	  if (shipCol > 5) {
-	    undrawShip();
-	    shipCol -= 5;
-	    drawShip(); 
-	  }
+    if (redrawScreen){
+    redrawScreen = 0;
+    if (switch_pressed) {
+      if (switch_pressed & SW1) {
+	if (shipCol > 5) {
+	  undrawShip();
+	  shipCol -= 5;
+	  drawShip();
 	}
-	
-	if (switch_pressed & SW2) {
-	  if (shipCol < (screenWidth - SHIP_W - 5)) {
-	    undrawShip();
-	    shipCol += 5;
-	    drawShip(); 
-	  }
-	}
-	switch_pressed = 0;
-      }	
-      move_asteroids();
-      show_score();
-      
-      if (collision()) {
-	clearScreen(COLOR_BLACK);
-	drawString5x7(30, screenHeight / 2, "GAME OVER", COLOR_RED, COLOR_BLACK);
-	while(1);
       }
+      else {
+	if (shipCol < (screenWidth - SHIP_W - 5)) {
+	  undrawShip();
+	  shipCol += 5;
+	  drawShip(); 
+	}
+      }
+      //switch_pressed = 0;
     }
+    move_asteroids();
+    show_score();
+    if (collision()) {
+      close_window();
+      //clearScreen(COLOR_BLACK);
+      drawString5x7(30, screenHeight / 2, "GAME OVER", COLOR_BLACK, COLOR_RED);
+      while(1);
+      
+    }
+      __delay_cycles(50000);
+    }
+    or_sr(0x8);
   }
 }
+
 
 void __interrupt_vec(PORT2_VECTOR) Port_2() {
   if (P2IFG & SWITCHES) {
